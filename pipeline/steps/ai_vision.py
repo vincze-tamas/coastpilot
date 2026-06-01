@@ -9,6 +9,7 @@ import geopandas as gpd
 from ..ai.factory import build_ai_analyzer
 from ..config import PipelineConfig
 from ..osm import load_geojson, save_geojson
+from ..recommendation import preference_score, recommendation_band
 from ..vision.imagery import resolve_imagery_request
 from .base import StepResult
 

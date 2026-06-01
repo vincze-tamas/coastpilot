@@ -14,3 +14,7 @@ gemini_usage.log
 *.log
 *.sqlite
 .DS_Store
+
+data/gold_*.csv
+data/gold_eval_*.json
+public/*.html

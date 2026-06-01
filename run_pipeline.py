@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from datetime import datetime, timezone
 
 from pipeline.config import PipelineConfig
@@ -11,6 +12,7 @@ from pipeline.steps.collection import OSMDataCollectionStep
 from pipeline.steps.eu_enrichment import EUEnrichmentStep
 from pipeline.steps.initial_classification import InitialClassificationStep
 from pipeline.steps.segmentation_step import SegmentationStep
+from pipeline.qa.metrics import build_quality_metrics
 
 
 def build_manifest(config: PipelineConfig, results: dict[str, dict], source_meta: dict, eu_meta: dict | None, vision_meta: dict | None) -> dict:
@@ -76,6 +78,8 @@ def _config_from_args(args: argparse.Namespace) -> PipelineConfig:
         ai_provider=args.ai_provider,
         ai_endpoint=args.ai_endpoint,
         ai_model=args.ai_model,
+        rock_min_confidence=args.rock_min_confidence,
+        prefer_rock_weight=args.prefer_rock_weight,
     )
 
 
