@@ -4,6 +4,8 @@ import base64
 import json
 import os
 import subprocess
+import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -227,6 +229,39 @@ def _normalize_label(label: Any) -> str | None:
     return value if value in VISION_LABELS else None
 
 
+
+
+def _validate_structured_output(parsed: dict[str, Any]) -> dict[str, Any]:
+    label = _normalize_label(parsed.get("label"))
+    confidence = parsed.get("confidence")
+    rationale = parsed.get("rationale")
+    if label is None or confidence is None or rationale in (None, ""):
+        return {"label": "unknown", "confidence": 0.0, "rationale": "invalid structured output from model"}
+    try:
+        confidence = float(confidence)
+    except Exception:
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+    rationale = str(rationale)[:1024]
+    return {"label": label, "confidence": confidence, "rationale": rationale}
+
+
+def _post_with_retry(url: str, *, json_payload: dict[str, Any], headers: dict[str, str] | None = None, timeout: float = 120.0, max_retries: int = 2, retry_backoff_seconds: float = 1.5):
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            started = time.perf_counter()
+            response = requests.post(url, json=json_payload, headers=headers, timeout=timeout)
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            response.raise_for_status()
+            return response, attempt, latency_ms
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= max_retries:
+                raise
+            time.sleep(retry_backoff_seconds * (2 ** attempt))
+    raise last_exc
+
 def _label_from_scores(scores: dict[str, float]) -> tuple[str, float]:
     label = max(scores, key=scores.get)
     total = sum(max(v, 0.0) for v in scores.values())
@@ -412,6 +447,9 @@ class PokeVisionProvider:
     model: str | None = None
     api_key_env: str = "BEACH_MAP_VISION_API_KEY"
     timeout_seconds: float = 120.0
+    max_retries: int = 2
+    retry_backoff_seconds: float = 1.5
+    max_output_tokens: int = 384
     allow_heuristic_fallback: bool = False
     image_width: int = 640
     image_height: int = 640
@@ -460,7 +498,7 @@ class PokeVisionProvider:
         prompt = {
             "task": "Classify the coastal satellite image.",
             "labels": list(VISION_LABELS),
-            "instructions": "Return only JSON with label, confidence, rationale, and usage. Usage should include prompt_tokens, completion_tokens, and total_tokens if you can provide them. Be concise and keep the rationale under 1024 characters. label must be sand, pebble, rock, or built.",
+            "instructions": "Return only JSON with label, confidence, rationale, and usage. Usage should include prompt_tokens, completion_tokens, and total_tokens if available. Keep rationale <= 200 chars. label must be sand, pebble, rock, or built.",
             "segment_id": segment.get("segment_id"),
         }
         return json.dumps(_jsonable(prompt), ensure_ascii=False)
@@ -505,13 +543,12 @@ class PokeVisionProvider:
         api_key = self._api_key()
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        response = requests.post(self._endpoint(), json=payload, headers=headers, timeout=self.timeout_seconds)
-        response.raise_for_status()
+        response, retries_used, latency_ms = _post_with_retry(self._endpoint(), json_payload=payload, headers=headers, timeout=self.timeout_seconds, max_retries=self.max_retries, retry_backoff_seconds=self.retry_backoff_seconds)
         data = response.json()
         content = data.get("message", {}).get("content", "").strip()
-        parsed = _parse_llm_json(content)
+        parsed = _validate_structured_output(_parse_llm_json(content))
         classification = self._normalize_result(parsed, provider=self.name, image_meta=image_meta)
-        classification.raw.update({"endpoint": self._endpoint(), "model": model, "ollama": data})
+        classification.raw.update({"endpoint": self._endpoint(), "model": model, "ollama": data, "retries_used": retries_used, "latency_ms": latency_ms, "request_id": str(uuid.uuid4())})
         return classification
 
     def _call_openai_compatible(self, segment: dict[str, Any], image_meta: dict[str, Any], context: dict[str, Any] | None = None) -> AIClassification:
@@ -540,8 +577,7 @@ class PokeVisionProvider:
             headers["Authorization"] = f"Bearer {api_key}"
         endpoint = self._endpoint().rstrip("/")
         if endpoint.endswith("/responses"):
-            response = requests.post(endpoint, json={"model": model, "input": payload["messages"], "temperature": 0.1}, headers=headers, timeout=self.timeout_seconds)
-            response.raise_for_status()
+            response, retries_used, latency_ms = _post_with_retry(endpoint, json_payload={"model": model, "input": payload["messages"], "temperature": 0.1}, headers=headers, timeout=self.timeout_seconds, max_retries=self.max_retries, retry_backoff_seconds=self.retry_backoff_seconds)
             data = response.json()
             content = ""
             if isinstance(data.get("output"), list):
@@ -549,19 +585,18 @@ class PokeVisionProvider:
                     for part in item.get("content", []):
                         if isinstance(part, dict) and part.get("type") in {"output_text", "text"}:
                             content += part.get("text", "")
-            parsed = _parse_llm_json(content)
+            parsed = _validate_structured_output(_parse_llm_json(content))
             classification = self._normalize_result(parsed, provider=self.name, image_meta=image_meta)
-            classification.raw.update({"endpoint": endpoint, "model": model, "responses": data})
+            classification.raw.update({"endpoint": endpoint, "model": model, "responses": data, "retries_used": retries_used, "latency_ms": latency_ms, "request_id": str(uuid.uuid4())})
             return classification
         if not endpoint.endswith("/chat/completions"):
             endpoint = f"{endpoint}/chat/completions"
-        response = requests.post(endpoint, json={"model": model, "temperature": 0.1, "messages": payload["messages"]}, headers=headers, timeout=self.timeout_seconds)
-        response.raise_for_status()
+        response, retries_used, latency_ms = _post_with_retry(endpoint, json_payload={"model": model, "temperature": 0.1, "messages": payload["messages"]}, headers=headers, timeout=self.timeout_seconds, max_retries=self.max_retries, retry_backoff_seconds=self.retry_backoff_seconds)
         data = response.json()
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        parsed = _parse_llm_json(content)
+        parsed = _validate_structured_output(_parse_llm_json(content))
         classification = self._normalize_result(parsed, provider=self.name, image_meta=image_meta)
-        classification.raw.update({"endpoint": endpoint, "model": model, "openai": data})
+        classification.raw.update({"endpoint": endpoint, "model": model, "openai": data, "retries_used": retries_used, "latency_ms": latency_ms, "request_id": str(uuid.uuid4())})
         return classification
 
     def _call_gemini(self, segment: dict[str, Any], image_meta: dict[str, Any], context: dict[str, Any] | None = None) -> AIClassification:
@@ -591,7 +626,7 @@ class PokeVisionProvider:
             ],
             "generationConfig": {
                 "temperature": 0.0,
-                "maxOutputTokens": 4096,
+                "maxOutputTokens": self.max_output_tokens,
                 "responseMimeType": "application/json",
                 "responseSchema": {
                     "type": "OBJECT",
@@ -612,15 +647,14 @@ class PokeVisionProvider:
                 },
             },
         }
-        response = requests.post(url, json=payload, timeout=self.timeout_seconds)
-        response.raise_for_status()
+        response, retries_used, latency_ms = _post_with_retry(url, json_payload=payload, timeout=self.timeout_seconds, max_retries=self.max_retries, retry_backoff_seconds=self.retry_backoff_seconds)
         data = response.json()
         candidates = data.get("candidates") or []
         content = ""
         if candidates:
             parts = candidates[0].get("content", {}).get("parts", [])
             content = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
-        parsed = _parse_llm_json(content)
+        parsed = _validate_structured_output(_parse_llm_json(content))
         classification = self._normalize_result(parsed, provider=self.name, image_meta=image_meta)
         usage = _extract_gemini_usage(data, parsed)
         if usage:
@@ -633,7 +667,7 @@ class PokeVisionProvider:
                 parsed=parsed,
             )
             classification.raw["usage"] = usage
-        classification.raw.update({"endpoint": url, "model": model, "gemini": data})
+        classification.raw.update({"endpoint": url, "model": model, "gemini": data, "retries_used": retries_used, "latency_ms": latency_ms, "request_id": str(uuid.uuid4())})
         return classification
 
     def classify_segment(self, segment: dict[str, Any], context: dict[str, Any] | None = None) -> AIClassification:

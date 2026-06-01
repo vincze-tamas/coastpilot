@@ -1,14 +1,20 @@
-# Spec review (current implementation vs expected goal)
+# Spec review updated
 
-## Expected goal
-Automated coastline segmentation + material classification pipeline with reliable, scalable AI fallback and reproducible outputs.
+Goal alignment
+- Pipeline stays on coastline segment labeling (sand pebble rock built).
+- AI step now classifies cached imagery too.
+- Manifest now includes run_summary and supports explicit output path.
 
-## Findings
-- ✅ Segmentation/classification skeleton exists and runs.
-- ✅ EU enrichment step integrated.
-- ⚠️ AI fallback is present but effectively stalled by candidate-filter logic.
-- ⚠️ Output schema and progress accounting are inconsistent.
-- ⚠️ Reproducibility weak due to missing repository history (bootstrapped now).
+Implemented
+- pipeline/steps/ai_vision.py: cached-image skip bug fixed, deterministic ordering, richer counters, safer needs_ai transition.
+- pipeline/ai/providers.py: structured output validation, retry and backoff wrapper, request metadata (latency retries request_id), reduced output token default.
+- pipeline/ai/factory.py: explicit provider routing and ambiguity guard, config-driven retry token image params.
+- pipeline/config.py: added retry token budget image tunables.
+- run_pipeline.py: resume stop controls, explicit manifest path, run summary section.
+- pipeline/qa/metrics.py: quality KPI module.
 
-## Verdict
-**Partially compliant**. Core architecture is right, execution reliability is below production threshold.
+Remaining gaps
+- Hard budget enforcement (ai_budget_max_tokens or usd) not yet wired to runtime abort.
+- QA JSON is not automatically emitted by run_pipeline yet.
+- Resume semantics are step-level only, no per-segment checkpoint cursor.
+- EU enrichment calibration safeguards still basic.

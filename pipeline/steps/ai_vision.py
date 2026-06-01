@@ -48,14 +48,16 @@ class AIVisionStep:
             return StepResult(name=self.name, output_path=output_path, records=0, details={"batch_limit": self.batch_limit})
 
         analyzer = build_ai_analyzer(config, overrides={"ai_provider": "poke_vision"})
-        candidates: list[int] = []
-        skipped_cached = 0
+        candidates: list[tuple[int, bool, str]] = []
+        skipped_already_done = 0
+        cache_hits = 0
         for idx, row in segments.iterrows():
             needs_ai = bool(row.get("needs_ai", True))
             already_done = str(row.get("ai_vision_version") or "") == config.version
             current_label = row.get("ai_surface_class")
             label_missing = current_label in (None, "", "None")
-            if already_done:
+            if already_done and not force:
+                skipped_already_done += 1
                 continue
             try:
                 request = resolve_imagery_request(row.to_dict(), config.cache_dir)
@@ -64,25 +66,26 @@ class AIVisionStep:
                 logger.warning("Unable to resolve imagery request for %s: %s", row.get("segment_id"), exc)
                 has_cached_image = False
             if has_cached_image:
-                skipped_cached += 1
-                continue
+                cache_hits += 1
             if force:
                 if label_missing:
-                    candidates.append(idx)
+                    candidates.append((idx, has_cached_image, str(row.get("segment_id") or idx)))
             elif needs_ai or label_missing:
-                candidates.append(idx)
-            if len(candidates) >= self.batch_limit:
-                break
+                candidates.append((idx, has_cached_image, str(row.get("segment_id") or idx)))
+
+        candidates.sort(key=lambda item: (0 if item[1] else 1, item[2]))
+        candidates = candidates[: self.batch_limit]
 
         if not candidates:
             logger.info("AI vision batch already complete for the requested limit, skipping")
             _backup_output_file(output_path, backup_root, logger)
-            return StepResult(name=self.name, output_path=output_path, records=int(len(segments)), skipped=True, details={"batch_limit": self.batch_limit, "processed": 0, "skipped_cached": skipped_cached})
+            return StepResult(name=self.name, output_path=output_path, records=int(len(segments)), skipped=True, details={"batch_limit": self.batch_limit, "processed": 0, "skipped_already_done": skipped_already_done, "cache_hit_candidates": cache_hits, "remaining_unlabeled": int(((segments.get("ai_surface_class").isna()) | (segments.get("ai_surface_class") == "")).sum()) if "ai_surface_class" in segments.columns else int(len(segments))})
 
         logger.info("Running AI vision classification for %s segments (limit=%s)", len(candidates), self.batch_limit)
         updated = segments.copy()
         results = []
-        for idx in candidates:
+        newly_labeled = 0
+        for idx, _cache_hit, _segment_id in candidates:
             segment = updated.loc[idx].to_dict()
             classification = analyzer.classify_segment(segment, context={"version": config.version, "batch_limit": self.batch_limit, "logger": logger})
             updated.at[idx, "ai_surface_class"] = classification.label
@@ -96,7 +99,9 @@ class AIVisionStep:
             updated.at[idx, "vision_midpoint_lon"] = classification.raw.get("image_meta", {}).get("midpoint_lon")
             updated.at[idx, "vision_midpoint_lat"] = classification.raw.get("image_meta", {}).get("midpoint_lat")
             updated.at[idx, "vision_image_cached"] = classification.raw.get("image_meta", {}).get("cache_hit")
-            updated.at[idx, "needs_ai"] = False
+            if classification.label not in (None, "", "unknown") and classification.confidence is not None:
+                updated.at[idx, "needs_ai"] = False
+                newly_labeled += 1
             results.append(classification)
 
         updated["pipeline_version"] = config.version
@@ -104,6 +109,8 @@ class AIVisionStep:
         _backup_output_file(output_path, backup_root, logger)
         downloaded = sum(1 for r in results if r.raw.get("image_meta", {}).get("cache_hit") is False)
         cached = sum(1 for r in results if r.raw.get("image_meta", {}).get("cache_hit") is True)
+        unknown_count = sum(1 for r in results if r.label in (None, "unknown", ""))
+        remaining_unlabeled = int(((updated.get("ai_surface_class").isna()) | (updated.get("ai_surface_class") == "") | (updated.get("ai_surface_class") == "unknown")).sum()) if "ai_surface_class" in updated.columns else 0
         logger.info("AI vision classified %s segments; downloaded %s images and reused %s cache entries", len(results), downloaded, cached)
         return StepResult(
             name=self.name,
@@ -112,9 +119,13 @@ class AIVisionStep:
             details={
                 "batch_limit": self.batch_limit,
                 "processed_segments": len(results),
-                "skipped_cached_candidates": skipped_cached,
+                "newly_labeled_segments": newly_labeled,
+                "unknown_results": unknown_count,
+                "skipped_already_done": skipped_already_done,
+                "cache_hit_candidates": cache_hits,
                 "downloaded_images": downloaded,
                 "cached_images": cached,
+                "remaining_unlabeled": remaining_unlabeled,
                 "vision_backend": analyzer.name,
                 "vision_model": getattr(analyzer, "model", None),
                 "image_cache_dir": str(analyzer.image_cache_dir),

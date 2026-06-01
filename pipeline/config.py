@@ -18,6 +18,13 @@ class PipelineConfig:
     ai_model: str | None = None
     ai_api_key_env: str = "BEACH_MAP_AI_API_KEY"
     ai_timeout_seconds: float = 120.0
+    ai_max_retries: int = 2
+    ai_retry_backoff_seconds: float = 1.5
+    ai_max_output_tokens: int = 384
+    ai_budget_max_tokens: int | None = None
+    ai_budget_max_usd: float | None = None
+    vision_image_width: int = 640
+    vision_image_height: int = 640
 
     @property
     def data_dir(self) -> Path:

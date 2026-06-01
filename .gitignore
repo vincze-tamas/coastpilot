@@ -6,11 +6,11 @@ cache/
 logs/
 public/
 data/backups/
-*.log
-*.sqlite
-.DS_Store
-ndata/*.geojsonndata/manifest_*.jsonndata/test_*.jsonndata/test_*.svgngemini_usage.logndata/*.geojson
+data/*.geojson
 data/manifest_*.json
 data/test_*.json
 data/test_*.svg
 gemini_usage.log
+*.log
+*.sqlite
+.DS_Store

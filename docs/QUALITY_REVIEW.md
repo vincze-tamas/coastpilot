@@ -1,20 +1,17 @@
-# Quality review (current state)
+# Quality review updated
 
-## Static quality
-- Modular step architecture is good.
-- Logging exists and is useful.
-- Missing robust unit/integration tests for AI pipeline edge cases.
+Static checks
+- python -m compileall run_pipeline.py pipeline tests : PASS
 
-## Operational quality
-- Backups are present.
-- Resume/progress semantics are weak.
-- Cost telemetry exists () but no enforced budget guardrail.
+Tests
+- python -m unittest discover -s tests -v : PASS
+- Added tests
+  - tests/test_ai_providers.py structured output validation
+  - tests/test_ai_vision_step.py cached candidate is processed, not skipped
 
-## Security/secrets
--  present in project; now ignored in git.
-- No secret value exposure included in this repository commit.
+Reliability improvements
+- HTTP and model calls have retry and backoff plus latency tracking.
+- Invalid model JSON is normalized to deterministic unknown classification instead of crashing.
 
-## Top risks
-1. Stalled labeling throughput.
-2. Token cost growth without hard caps.
-3. Drift in manifest/schema contracts.
+Known risk
+- Full end-to-end long-run coverage test on 22149 segments was not rerun in this change window.
