@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -63,9 +64,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ai-endpoint", type=str, default=None)
     parser.add_argument("--ai-model", type=str, default=None)
     parser.add_argument("--vision-limit", type=int, default=100, help="Maximum number of segments to process in the AI vision step")
+    parser.add_argument("--vision-segment-ids-csv", type=str, default=None, help="Optional CSV whose segment_id values define the exact AI vision candidates")
+    parser.add_argument("--vision-segment-id-column", type=str, default="segment_id", help="Column to read from --vision-segment-ids-csv")
     parser.add_argument("--resume-from", choices=["fetch","segment","classify","eu","ai"], default=None, help="Start execution from this step")
     parser.add_argument("--stop-after", choices=["fetch","segment","classify","eu","ai"], default=None, help="Stop execution after this step")
     parser.add_argument("--manifest-path", type=str, default=None, help="Explicit manifest output path")
+    defaults = PipelineConfig()
+    parser.add_argument("--rock-min-confidence", type=float, default=defaults.rock_min_confidence, help="Minimum confidence for strict rock-positive outputs")
+    parser.add_argument("--prefer-rock-weight", type=float, default=defaults.prefer_rock_weight, help="Weight boost for rock preference ranking")
+    parser.add_argument("--quality-report", type=str, default=None, help="Optional path to write quality report JSON")
     return parser.parse_args()
 
 
@@ -81,6 +88,19 @@ def _config_from_args(args: argparse.Namespace) -> PipelineConfig:
         rock_min_confidence=args.rock_min_confidence,
         prefer_rock_weight=args.prefer_rock_weight,
     )
+
+
+def _load_segment_ids_csv(path: str | None, column: str) -> set[str] | None:
+    if not path:
+        return None
+    with Path(path).open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        if not reader.fieldnames or column not in reader.fieldnames:
+            raise SystemExit(f"{path} does not contain required column {column!r}")
+        values = {str(row[column]).strip() for row in reader if str(row.get(column, "")).strip()}
+    if not values:
+        raise SystemExit(f"No segment ids found in {path} column {column!r}")
+    return values
 
 
 def main() -> int:
@@ -104,7 +124,7 @@ def main() -> int:
     segmentation_step = SegmentationStep()
     classification_step = InitialClassificationStep()
     eu_step = EUEnrichmentStep()
-    vision_step = AIVisionStep(batch_limit=args.vision_limit)
+    vision_step = AIVisionStep(batch_limit=args.vision_limit, target_segment_ids=_load_segment_ids_csv(args.vision_segment_ids_csv, args.vision_segment_id_column))
 
     step_order = ["fetch", "segment", "classify", "eu", "ai"]
     resume_idx = step_order.index(args.resume_from) if args.resume_from else 0

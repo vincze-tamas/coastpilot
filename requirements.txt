@@ -4,3 +4,4 @@ requests>=2.31
 pandas>=2.1
 pyproj>=3.6
 Pillow>=10.0
+flask>=3.1

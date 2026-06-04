@@ -13,11 +13,15 @@ It processes coastal geometry, enriches it, and applies AI vision classification
 5. Runs AI vision classification for unresolved segments.
 6. Produces versioned artifacts and manifest metadata.
 
-Target labels used by AI vision:
-- sand
-- pebble
+Canonical surface labels used by AI vision and gold labels:
 - rock
+- pebble
+- cobble
+- sand
 - built
+- unknown
+
+Strict rocky policy: only `rock` counts as rocky. `pebble` and `cobble` are separate non-rocky classes for evaluation and recommendation QA.
 
 ## Main features
 

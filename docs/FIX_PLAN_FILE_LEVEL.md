@@ -29,7 +29,7 @@ Ship a reproducible, cost-controlled coastline-surface classification pipeline w
 ### 2)  (P0 cost + correctness)
 - Add strict structured output contract:
   - required keys: , , .
-  - label constrained to: .
+  - label constrained to canonical set: rock, pebble, cobble, sand, built, unknown.
 - Add response validation + fallback path:
   - if parse fails: return  + reason.
 - Add token usage accumulator writer hardening:
@@ -101,3 +101,8 @@ Ship a reproducible, cost-controlled coastline-surface classification pipeline w
 - Deterministic rerun reproducibility (same inputs => same outputs).
 - Cost report generated every run.
 - Test suite green.
+
+## Gold-label policy
+- Canonical labels: rock, pebble, cobble, sand, built, unknown.
+- Strict rocky: only rock is positive. Pebble and cobble are not rocky and must count as negatives in binary rock metrics.
+- Evaluator must fail on invalid gold_label values and surface invalid prediction labels in the JSON output.

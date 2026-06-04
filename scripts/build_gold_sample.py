@@ -26,7 +26,7 @@ def main() -> int:
 
     sample = gdf[cols].copy()
     groups = []
-    classes = ['rock', 'pebble', 'sand', 'built', 'unknown']
+    classes = ['rock', 'pebble', 'cobble', 'sand', 'built', 'unknown']
     per = max(1, args.size // max(1, len(classes)))
     for c in classes:
         subset = sample[sample['ai_surface_class'] == c]

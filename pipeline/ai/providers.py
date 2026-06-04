@@ -21,7 +21,7 @@ PokeVision_LLM_ENDPOINT = "http://127.0.0.1:11434/api/chat"
 PokeVision_LLM_MODEL = "qwen2.5:7b"
 GEMINI_VISION_MODEL = "gemini-2.5-flash"
 GEMINI_VISION_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-VISION_LABELS = ("sand", "pebble", "rock", "built")
+VISION_LABELS = ("rock", "pebble", "cobble", "sand", "built", "unknown")
 GEMINI_USAGE_LOG_FILENAME = "gemini_usage.log"
 
 
@@ -498,7 +498,7 @@ class PokeVisionProvider:
         prompt = {
             "task": "Classify the coastal satellite image.",
             "labels": list(VISION_LABELS),
-            "instructions": "Return only JSON with label, confidence, rationale, and usage. Usage should include prompt_tokens, completion_tokens, and total_tokens if available. Keep rationale <= 200 chars. label must be sand, pebble, rock, or built.",
+            "instructions": "Return only JSON with label, confidence, rationale, and usage. Usage should include prompt_tokens, completion_tokens, and total_tokens if available. Keep rationale <= 200 chars. label must be one of: rock, pebble, cobble, sand, built, unknown. Strict rocky policy: pebble and cobble are not rock.",
             "segment_id": segment.get("segment_id"),
         }
         return json.dumps(_jsonable(prompt), ensure_ascii=False)
@@ -626,7 +626,8 @@ class PokeVisionProvider:
             ],
             "generationConfig": {
                 "temperature": 0.0,
-                "maxOutputTokens": self.max_output_tokens,
+                "maxOutputTokens": max(self.max_output_tokens, 1024),
+                "thinkingConfig": {"thinkingBudget": 0},
                 "responseMimeType": "application/json",
                 "responseSchema": {
                     "type": "OBJECT",

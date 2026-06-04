@@ -10,7 +10,21 @@ from .config import PipelineConfig
 from .osm import load_geojson, save_geojson
 
 PROJECTED_CRS = "EPSG:32633"
-SURFACE_LABELS = {"sand", "pebble", "rock", "built"}
+SURFACE_ALIASES = {
+    "sand": "sand",
+    "pebble": "pebble",
+    "pebbles": "pebble",
+    "rock": "rock",
+    "rocks": "rock",
+    "rocky": "rock",
+    "cobble": "cobble",
+    "cobbles": "cobble",
+    "cobblestone": "cobble",
+    "cobblestones": "cobble",
+    "built": "built",
+    "concrete": "built",
+    "paved": "built",
+}
 
 
 def _normalize_surface(surface: object) -> list[str]:
@@ -21,8 +35,9 @@ def _normalize_surface(surface: object) -> list[str]:
     parts = [p.strip().lower() for p in surface.replace("/", ";").replace(",", ";").replace("|", ";").split(";")]
     labels: list[str] = []
     for part in parts:
-        if part in SURFACE_LABELS and part not in labels:
-            labels.append(part)
+        label = SURFACE_ALIASES.get(part)
+        if label and label not in labels:
+            labels.append(label)
     return labels
 
 

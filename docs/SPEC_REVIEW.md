@@ -1,7 +1,7 @@
 # Spec review updated
 
 Goal alignment
-- Pipeline stays on coastline segment labeling (sand pebble rock built).
+- Pipeline stays on coastline segment labeling with canonical labels: rock, pebble, cobble, sand, built, unknown.
 - AI step now classifies cached imagery too.
 - Manifest now includes run_summary and supports explicit output path.
 
@@ -18,3 +18,7 @@ Remaining gaps
 - QA JSON is not automatically emitted by run_pipeline yet.
 - Resume semantics are step-level only, no per-segment checkpoint cursor.
 - EU enrichment calibration safeguards still basic.
+
+Gold-label policy
+- Strict rocky is enforced: only rock is positive. Pebble/cobble are distinct non-rocky labels.
+- Gold evaluator validates gold_label against the canonical set and reports invalid predictions.

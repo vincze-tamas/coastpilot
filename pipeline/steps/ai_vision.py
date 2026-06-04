@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 
 import geopandas as gpd
 
@@ -13,6 +14,50 @@ from ..recommendation import preference_score, recommendation_band
 from ..vision.imagery import resolve_imagery_request
 from .base import StepResult
 
+
+
+
+def _confidence_value(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _strict_rock_label(label: str | None, confidence: Any, rock_min_confidence: float) -> str | None:
+    if label != "rock":
+        return label
+    conf = _confidence_value(confidence)
+    if conf is None or conf < rock_min_confidence:
+        return "unknown"
+    return label
+
+
+def _apply_rock_objective_columns(segments, config: PipelineConfig):
+    updated = segments.copy()
+    if "ai_surface_class" not in updated.columns:
+        return updated
+
+    def strict_label_row(row) -> str | None:
+        return _strict_rock_label(
+            row.get("ai_surface_class"),
+            row.get("ai_confidence"),
+            getattr(config, "rock_min_confidence", 0.90),
+        )
+
+    def score_row(row) -> float:
+        return preference_score(
+            row.get("ai_surface_class"),
+            row.get("ai_confidence"),
+            prefer_rock=getattr(config, "prefer_rock_weight", 1.0),
+        )
+
+    updated["ai_surface_class"] = updated.apply(strict_label_row, axis=1)
+    updated["rock_preference_score"] = updated.apply(score_row, axis=1)
+    updated["rock_recommendation_band"] = updated["rock_preference_score"].apply(recommendation_band)
+    return updated
 
 def _backup_output_file(output_path, backup_root, logger) -> None:
     if not output_path.exists():
@@ -35,6 +80,7 @@ def _backup_output_file(output_path, backup_root, logger) -> None:
 class AIVisionStep:
     name: str = "ai_vision"
     batch_limit: int = 100
+    target_segment_ids: set[str] | None = None
 
     def run(self, config: PipelineConfig, logger, force: bool = False) -> StepResult:
         output_path = config.classified_geojson
@@ -52,11 +98,21 @@ class AIVisionStep:
         candidates: list[tuple[int, bool, str]] = []
         skipped_already_done = 0
         cache_hits = 0
+        target_segment_ids = {str(s) for s in self.target_segment_ids} if self.target_segment_ids else None
+        target_total = 0
+        target_missing = 0
         for idx, row in segments.iterrows():
+            segment_id = str(row.get("segment_id") or idx)
+            if target_segment_ids is not None:
+                if segment_id not in target_segment_ids:
+                    continue
+                target_total += 1
             needs_ai = bool(row.get("needs_ai", True))
             already_done = str(row.get("ai_vision_version") or "") == config.version
             current_label = row.get("ai_surface_class")
             label_missing = current_label in (None, "", "None")
+            if target_segment_ids is not None and (label_missing or str(current_label).strip().lower() == "unknown"):
+                target_missing += 1
             if already_done and not force:
                 skipped_already_done += 1
                 continue
@@ -69,18 +125,19 @@ class AIVisionStep:
             if has_cached_image:
                 cache_hits += 1
             if force:
-                if label_missing:
-                    candidates.append((idx, has_cached_image, str(row.get("segment_id") or idx)))
+                candidates.append((idx, has_cached_image, segment_id))
             elif needs_ai or label_missing:
-                candidates.append((idx, has_cached_image, str(row.get("segment_id") or idx)))
+                candidates.append((idx, has_cached_image, segment_id))
 
         candidates.sort(key=lambda item: (0 if item[1] else 1, item[2]))
         candidates = candidates[: self.batch_limit]
 
         if not candidates:
-            logger.info("AI vision batch already complete for the requested limit, skipping")
+            logger.info("AI vision batch already complete for the requested limit, applying rock objective columns and skipping model calls")
+            updated = _apply_rock_objective_columns(segments, config)
+            save_geojson(updated, output_path)
             _backup_output_file(output_path, backup_root, logger)
-            return StepResult(name=self.name, output_path=output_path, records=int(len(segments)), skipped=True, details={"batch_limit": self.batch_limit, "processed": 0, "skipped_already_done": skipped_already_done, "cache_hit_candidates": cache_hits, "remaining_unlabeled": int(((segments.get("ai_surface_class").isna()) | (segments.get("ai_surface_class") == "")).sum()) if "ai_surface_class" in segments.columns else int(len(segments))})
+            return StepResult(name=self.name, output_path=output_path, records=int(len(updated)), skipped=True, details={"batch_limit": self.batch_limit, "processed": 0, "skipped_already_done": skipped_already_done, "cache_hit_candidates": cache_hits, "target_segment_ids": len(target_segment_ids) if target_segment_ids is not None else None, "target_matched_segments": target_total if target_segment_ids is not None else None, "target_missing_or_unknown_before_run": target_missing if target_segment_ids is not None else None, "remaining_unlabeled": int(((updated.get("ai_surface_class").isna()) | (updated.get("ai_surface_class") == "")).sum()) if "ai_surface_class" in updated.columns else int(len(updated))})
 
         logger.info("Running AI vision classification for %s segments (limit=%s)", len(candidates), self.batch_limit)
         updated = segments.copy()
@@ -89,9 +146,14 @@ class AIVisionStep:
         for idx, _cache_hit, _segment_id in candidates:
             segment = updated.loc[idx].to_dict()
             classification = analyzer.classify_segment(segment, context={"version": config.version, "batch_limit": self.batch_limit, "logger": logger})
-            updated.at[idx, "ai_surface_class"] = classification.label
+            rock_min_confidence = getattr(config, "rock_min_confidence", 0.90)
+            label = _strict_rock_label(classification.label, classification.confidence, rock_min_confidence)
+            rationale = classification.rationale
+            if label != classification.label:
+                rationale = f"{rationale}; demoted below rock_min_confidence={rock_min_confidence:.2f}"
+            updated.at[idx, "ai_surface_class"] = label
             updated.at[idx, "ai_confidence"] = classification.confidence
-            updated.at[idx, "ai_rationale"] = classification.rationale
+            updated.at[idx, "ai_rationale"] = rationale
             updated.at[idx, "ai_provider"] = classification.provider
             updated.at[idx, "ai_vision_version"] = config.version
             updated.at[idx, "ai_vision_source"] = classification.raw.get("image_meta", {}).get("provider")
@@ -99,13 +161,15 @@ class AIVisionStep:
             updated.at[idx, "vision_image_url"] = classification.raw.get("image_meta", {}).get("url")
             updated.at[idx, "vision_midpoint_lon"] = classification.raw.get("image_meta", {}).get("midpoint_lon")
             updated.at[idx, "vision_midpoint_lat"] = classification.raw.get("image_meta", {}).get("midpoint_lat")
-            updated.at[idx, "vision_image_cached"] = classification.raw.get("image_meta", {}).get("cache_hit")
+            cache_hit = classification.raw.get("image_meta", {}).get("cache_hit")
+            updated.at[idx, "vision_image_cached"] = float(cache_hit) if cache_hit is not None else float("nan")
             if classification.label not in (None, "", "unknown") and classification.confidence is not None:
                 updated.at[idx, "needs_ai"] = False
                 newly_labeled += 1
             results.append(classification)
 
         updated["pipeline_version"] = config.version
+        updated = _apply_rock_objective_columns(updated, config)
         save_geojson(updated, output_path)
         _backup_output_file(output_path, backup_root, logger)
         downloaded = sum(1 for r in results if r.raw.get("image_meta", {}).get("cache_hit") is False)
@@ -126,6 +190,9 @@ class AIVisionStep:
                 "cache_hit_candidates": cache_hits,
                 "downloaded_images": downloaded,
                 "cached_images": cached,
+                "target_segment_ids": len(target_segment_ids) if target_segment_ids is not None else None,
+                "target_matched_segments": target_total if target_segment_ids is not None else None,
+                "target_missing_or_unknown_before_run": target_missing if target_segment_ids is not None else None,
                 "remaining_unlabeled": remaining_unlabeled,
                 "vision_backend": analyzer.name,
                 "vision_model": getattr(analyzer, "model", None),

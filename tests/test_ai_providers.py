@@ -13,6 +13,10 @@ class TestAIProviders(unittest.TestCase):
         self.assertGreaterEqual(out['confidence'], 0)
         self.assertLessEqual(out['confidence'], 1)
 
+    def test_validate_structured_output_accepts_canonical_cobble(self):
+        out = _validate_structured_output({'label': 'cobble', 'confidence': 0.74, 'rationale': 'rounded stones'})
+        self.assertEqual(out['label'], 'cobble')
+
 
 if __name__ == '__main__':
     unittest.main()

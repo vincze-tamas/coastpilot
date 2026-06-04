@@ -8,7 +8,8 @@ def clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
 def preference_score(label: str | None, confidence: float | None, *, prefer_rock: float = 1.0) -> float:
     base = {
         'rock': 1.0,
-        'pebble': 0.65,
+        'pebble': 0.35,
+        'cobble': 0.35,
         'built': 0.35,
         'sand': 0.2,
         'unknown': 0.0,

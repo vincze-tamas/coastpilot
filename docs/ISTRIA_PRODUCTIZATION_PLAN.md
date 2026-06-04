@@ -1,7 +1,7 @@
 # Istria productization plan
 
 Goal
-Help a rock-loving traveler quickly find coast segments likely to be rocky.
+Help a rock-loving traveler quickly find coast segments explicitly labeled rock.
 
 Implemented now
 - Gold dataset sampling script: scripts/build_gold_sample.py
@@ -15,7 +15,7 @@ Workflow
 1. Generate or refresh classified data.
 2. Build annotation sample (400 rows by default).
 3. Manually annotate gold_label in CSV.
-4. Run evaluator and inspect rock_precision, rock_recall, rock_f1.
+4. Run evaluator and inspect strict_rock precision/recall/f1. Only gold_label == rock is positive; pebble/cobble are negatives.
 5. Tune model prompt thresholds and rerun.
 6. Rebuild map HTML and use class confidence score filters.
 
@@ -26,4 +26,9 @@ python run_pipeline.py --step ai --vision-limit 100 --rock-min-confidence 0.60 -
 python scripts/build_map_ui.py --input data/segments_classified.geojson --output public/coastpilot_map.html
 
 Next practical target
-- Reach rock_f1 >= 0.80 on manually annotated Istria sample before scaling to other regions.
+- Reach strict_rock.f1 >= 0.80 on manually annotated Istria sample before scaling to other regions.
+
+Label policy
+- Canonical labels: rock, pebble, cobble, sand, built, unknown.
+- Strict rocky: positive iff label == rock. Pebble and cobble are NOT rocky.
+- Evaluator rejects invalid gold labels and reports invalid prediction labels separately.

@@ -25,7 +25,7 @@ class PipelineConfig:
     ai_budget_max_usd: float | None = None
     vision_image_width: int = 640
     vision_image_height: int = 640
-    rock_min_confidence: float = 0.55
+    rock_min_confidence: float = 0.90
     prefer_rock_weight: float = 1.0
 
     @property
