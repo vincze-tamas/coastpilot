@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import geopandas as gpd
+import pandas as pd
 
 from ..ai.factory import build_ai_analyzer
 from ..config import PipelineConfig
@@ -40,17 +41,32 @@ def _apply_rock_objective_columns(segments, config: PipelineConfig):
     if "ai_surface_class" not in updated.columns:
         return updated
 
+    def usable(value: Any) -> bool:
+        return value not in (None, "", "None") and not pd.isna(value)
+
+    def raw_label(row) -> str | None:
+        value = row.get("ai_raw_surface_class") if "ai_raw_surface_class" in updated.columns else None
+        if usable(value):
+            return value
+        return row.get("ai_surface_class")
+
+    def raw_confidence(row) -> Any:
+        value = row.get("ai_raw_confidence") if "ai_raw_confidence" in updated.columns else None
+        if usable(value):
+            return value
+        return row.get("ai_confidence")
+
     def strict_label_row(row) -> str | None:
         return _strict_rock_label(
-            row.get("ai_surface_class"),
-            row.get("ai_confidence"),
+            raw_label(row),
+            raw_confidence(row),
             getattr(config, "rock_min_confidence", 0.90),
         )
 
     def score_row(row) -> float:
         return preference_score(
             row.get("ai_surface_class"),
-            row.get("ai_confidence"),
+            raw_confidence(row),
             prefer_rock=getattr(config, "prefer_rock_weight", 1.0),
         )
 
@@ -151,6 +167,8 @@ class AIVisionStep:
             rationale = classification.rationale
             if label != classification.label:
                 rationale = f"{rationale}; demoted below rock_min_confidence={rock_min_confidence:.2f}"
+            updated.at[idx, "ai_raw_surface_class"] = classification.label
+            updated.at[idx, "ai_raw_confidence"] = classification.confidence
             updated.at[idx, "ai_surface_class"] = label
             updated.at[idx, "ai_confidence"] = classification.confidence
             updated.at[idx, "ai_rationale"] = rationale

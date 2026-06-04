@@ -1,5 +1,7 @@
 import unittest
-from pipeline.ai.providers import _validate_structured_output
+from pathlib import Path
+
+from pipeline.ai.providers import PokeVisionProvider, _validate_structured_output
 
 
 class TestAIProviders(unittest.TestCase):
@@ -16,6 +18,13 @@ class TestAIProviders(unittest.TestCase):
     def test_validate_structured_output_accepts_canonical_cobble(self):
         out = _validate_structured_output({'label': 'cobble', 'confidence': 0.74, 'rationale': 'rounded stones'})
         self.assertEqual(out['label'], 'cobble')
+
+    def test_vision_prompt_defines_rock_against_sand_and_built(self):
+        provider = PokeVisionProvider(image_cache_dir=Path('/tmp'))
+        prompt = provider._vision_prompt({'segment_id': 'seg_x'}, {'image_path': '/tmp/x.jpg'})
+        self.assertIn('exposed bedrock', prompt)
+        self.assertIn('man-made', prompt)
+        self.assertIn('sand: light', prompt)
 
 
 if __name__ == '__main__':

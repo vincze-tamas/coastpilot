@@ -498,7 +498,7 @@ class PokeVisionProvider:
         prompt = {
             "task": "Classify the coastal satellite image.",
             "labels": list(VISION_LABELS),
-            "instructions": "Return only JSON with label, confidence, rationale, and usage. Usage should include prompt_tokens, completion_tokens, and total_tokens if available. Keep rationale <= 200 chars. label must be one of: rock, pebble, cobble, sand, built, unknown. Strict rocky policy: pebble and cobble are not rock.",
+            "instructions": "Return only JSON with label, confidence, rationale, and usage. Usage should include prompt_tokens, completion_tokens, and total_tokens if available. Keep rationale <= 200 chars. label must be one of: rock, pebble, cobble, sand, built, unknown. Strict rocky policy: pebble and cobble are not rock. Label rules: rock = exposed bedrock, cliffs, jagged outcrops, steep hard shoreline, or dark irregular stone at the waterline; sand: light smooth beach/sediment; pebble/cobble: loose rounded stones, not rock; built = clearly man-made harbor, seawall, pier, ramp, buildings, or paved waterfront; unknown only when image quality/occlusion prevents a call.",
             "segment_id": segment.get("segment_id"),
         }
         return json.dumps(_jsonable(prompt), ensure_ascii=False)
