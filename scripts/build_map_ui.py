@@ -31,7 +31,10 @@ def main() -> int:
     if 'ai_confidence' not in gdf.columns:
         gdf['ai_confidence'] = 0.0
     if 'recommendation_score' not in gdf.columns:
-        gdf['recommendation_score'] = 0.0
+        if 'rock_preference_score' in gdf.columns:
+            gdf['recommendation_score'] = gdf['rock_preference_score']
+        else:
+            gdf['recommendation_score'] = 0.0
 
     features = []
     for _, r in gdf.iterrows():
@@ -61,7 +64,7 @@ def main() -> int:
 <style>html,body,#map{height:100%;margin:0}.panel{position:absolute;top:10px;left:10px;z-index:999;background:#fff;padding:10px;border-radius:8px;font-family:Arial}</style>
 </head><body>
 <div class='panel'>
-<label>Label <select id='label'><option value='all'>all</option><option>rock</option><option>pebble</option><option>sand</option><option>built</option><option>unknown</option></select></label><br/>
+<label>Label <select id='label'><option value='all'>all</option><option>rock</option><option>pebble</option><option>cobble</option><option>sand</option><option>built</option><option>unknown</option></select></label><br/>
 <label>Min confidence <input id='conf' type='range' min='0' max='1' step='0.05' value='0.5'/><span id='confv'>0.5</span></label><br/>
 <label>Min score <input id='score' type='range' min='0' max='1' step='0.05' value='0.5'/><span id='scorev'>0.5</span></label>
 </div>
