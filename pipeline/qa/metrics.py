@@ -25,16 +25,16 @@ def build_quality_metrics(classified_geojson: Path, output_path: Path) -> dict:
         }
     else:
         valid = labels.notna()
-        valid = valid.logical_and(labels != '')
-        known = valid.logical_and(labels != 'unknown')
+        valid = valid & (labels != '')
+        known = valid & (labels != 'unknown')
         coverage = (_count(known) / total * 100.0) if total else 0.0
         class_dist = {}
-        for c in ['sand', 'pebble', 'rock', 'built', 'unknown']:
+        for c in ['sand', 'pebble', 'cobble', 'rock', 'built', 'unknown']:
             class_dist[c] = int((labels == c).sum())
         low = mid = high = 0
         if conf is not None:
             low = int(((conf < 0.5).fillna(False)).sum())
-            mid = int((((conf >= 0.5).logical_and(conf < 0.8)).fillna(False)).sum())
+            mid = int((((conf >= 0.5) & (conf < 0.8)).fillna(False)).sum())
             high = int(((conf >= 0.8).fillna(False)).sum())
         metrics = {
             'total_segments': total,

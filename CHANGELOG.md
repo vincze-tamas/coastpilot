@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Use valid pandas boolean masks in quality metrics and include `cobble` in
+  the class distribution, with regression tests for labels, confidence bands,
+  missing columns, empty inputs, and persisted JSON output.
+
 ### Security
 
 - Bind the standalone review labeler to `127.0.0.1` by default and refuse
