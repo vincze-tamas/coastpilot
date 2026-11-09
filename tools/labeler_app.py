@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import ipaddress
 import os
 from pathlib import Path
 from typing import Optional
@@ -225,7 +226,20 @@ def label():
     return redirect(url_for("index"))
 
 
+def _validate_bind_host(host: str) -> None:
+    """Require authentication before exposing the standalone labeler off-loopback."""
+    try:
+        loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = host.lower() == "localhost"
+    if not loopback and not APP_TOKEN.strip():
+        raise SystemExit(
+            "COASTPILOT_LABEL_TOKEN is required for a non-loopback COASTPILOT_LABEL_HOST"
+        )
+
+
 if __name__ == "__main__":
-    host = os.getenv("COASTPILOT_LABEL_HOST", "0.0.0.0")
+    host = os.getenv("COASTPILOT_LABEL_HOST", "127.0.0.1").strip()
+    _validate_bind_host(host)
     port = int(os.getenv("COASTPILOT_LABEL_PORT", "8787"))
     app.run(host=host, port=port, debug=False)

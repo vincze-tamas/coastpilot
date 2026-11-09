@@ -71,6 +71,23 @@ Resume/stop controls:
 Explicit manifest output:
 - python run_pipeline.py --step all --manifest-path /tmp/coastpilot_manifest.json
 
+## Review labeler
+
+Start the standalone labeler with `python tools/labeler_app.py`. It binds to
+`127.0.0.1:8787` by default; use an SSH local forward for remote review rather
+than exposing the development server.
+
+- `COASTPILOT_LABEL_HOST` overrides the bind address. Non-loopback addresses
+  (including `0.0.0.0` and `::`) require a non-blank `COASTPILOT_LABEL_TOKEN`;
+  otherwise startup exits before opening a listener.
+- When a token is configured, every route requires it in the `token` query
+  parameter or `X-Label-Token` header. Keep tokens out of source control and
+  shared logs; use a private, high-entropy value and HTTPS for network access.
+- The startup guard applies to the standalone script. If using an alternative
+  WSGI launcher or reverse proxy, configure a token explicitly before making
+  the app reachable beyond localhost; those launchers control their own bind.
+- `COASTPILOT_LABEL_INPUT` and `COASTPILOT_LABEL_OUTPUT` select the CSV paths.
+
 ## Outputs
 
 Typical outputs:
