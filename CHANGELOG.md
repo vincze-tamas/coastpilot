@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add a minimal GitHub Actions `Python tests` job for pull requests to `main`
+  and pushes to `main`, checking dependencies, Python compilation, and unit
+  tests on Python 3.12 without production secrets or live pipeline execution.
+
 ### Fixed
 
 - Wire `--quality-report PATH` to write quality metrics from classified data
