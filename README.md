@@ -126,6 +126,20 @@ The project includes:
 - python -m compileall run_pipeline.py pipeline tests
 - python -m unittest discover -s tests -v
 
+GitHub Actions runs the `Python tests` job on pull requests targeting `main`
+and pushes to `main`, using Python 3.12 on `ubuntu-latest` with a 10-minute
+timeout and read-only repository access. From the repository root it runs:
+
+```sh
+python -m pip install -r requirements.txt
+python -m pip check
+python -m compileall -q run_pipeline.py pipeline tests
+python -m unittest discover -s tests -v
+```
+
+CI does not require production secrets or start a server, the full pipeline,
+live data collection, vision API calls, or deployment.
+
 ## Current limitations
 
 - Hard runtime budget kill-switch (token/USD) is not fully wired yet.
