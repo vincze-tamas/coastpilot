@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Wire `--quality-report PATH` to write quality metrics from classified data
+  after a successful pipeline run, with CLI regression tests and usage docs.
 - Use valid pandas boolean masks in quality metrics and include `cobble` in
   the class distribution, with regression tests for labels, confidence bands,
   missing columns, empty inputs, and persisted JSON output.
