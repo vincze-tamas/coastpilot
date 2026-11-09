@@ -196,6 +196,8 @@ def main() -> int:
     manifest_out = Path(args.manifest_path) if args.manifest_path else config.manifest_path
     manifest_out.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     logger.info("Wrote manifest to %s", manifest_out)
+    if args.quality_report:
+        build_quality_metrics(config.classified_geojson, Path(args.quality_report))
     return 0
 
 

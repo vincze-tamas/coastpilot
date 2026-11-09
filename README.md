@@ -71,6 +71,15 @@ Resume/stop controls:
 Explicit manifest output:
 - python run_pipeline.py --step all --manifest-path /tmp/coastpilot_manifest.json
 
+Optional quality report:
+- python run_pipeline.py --step classify --quality-report /tmp/coastpilot_quality.json
+
+After a successful run, `--quality-report PATH` writes JSON metrics from
+`data/segments_classified.geojson`: label coverage, unknown ratio, class
+distribution, and confidence bands. The classified file must exist and the
+output directory must already exist. Without the flag, no quality report is
+generated.
+
 ## Review labeler
 
 Start the standalone labeler with `python tools/labeler_app.py`. It binds to
